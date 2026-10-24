@@ -111,7 +111,12 @@ export class A2AServer {
 
         // 1. Agent Card Discovery
         if (method === 'GET' && (path === '/.well-known/agent.json' || path === '/agent.json')) {
-          return self.jsonResponse(getAgentCard(hostUrl));
+          return self.jsonResponse(
+            getAgentCard(hostUrl, {
+              max: agent.getMaxConcurrency(),
+              active: agent.getActiveTaskCount(),
+            })
+          );
         }
 
         // 2. Create Task
@@ -141,17 +146,19 @@ export class A2AServer {
 
             store.createTask(newTask);
 
-            // Execute asynchronously in Pi Durable loop
-            setTimeout(() => {
-              agent.runTask(taskId).catch((err) => {
-                console.error(`[Task Execution Error] Task ${taskId}:`, err.message);
-              });
-            }, 10);
+            // Schedule task in worker concurrency queue
+            agent.schedule(taskId);
+
+            const isImmediatelyRunning = agent.isTaskRunning(taskId);
 
             return self.jsonResponse(
               {
                 task_id: taskId,
-                status: 'PENDING',
+                status: isImmediatelyRunning ? 'RUNNING' : 'PENDING',
+                slot_info: {
+                  active: agent.getActiveTaskCount(),
+                  max: agent.getMaxConcurrency(),
+                },
                 lease_expires_at: newTask.lease_expires_at,
                 endpoints: {
                   status: `/tasks/${taskId}`,

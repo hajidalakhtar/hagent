@@ -2,11 +2,11 @@
 import { config } from '../config.ts';
 import type { A2AAgentCard } from '../types.ts';
 
-export function getAgentCard(hostUrl: string): A2AAgentCard {
+export function getAgentCard(hostUrl: string, slots?: { max: number; active: number }): A2AAgentCard & { slots?: { max: number; active: number } } {
   return {
-    name: config.agentName,
+    name: `${config.agentName} [${config.agentId}]`,
     description:
-      'Autonomous software engineering agent running on Pi Durable harness with Git Worktree isolation and crash recovery.',
+      'Autonomous tactical execution coding worker running on Pi Durable with Git Worktree isolation. Designed to receive decomposed sub-tasks from Master Agents (Claude Code, Google Antigravity, Pi Agent).',
     version: config.agentVersion,
     endpoints: {
       agent_card: `${hostUrl}/.well-known/agent.json`,
@@ -27,22 +27,23 @@ export function getAgentCard(hostUrl: string): A2AAgentCard {
       ],
       languages: ['typescript', 'javascript', 'python', 'go', 'rust', 'shell', 'any'],
     },
+    slots: slots || { max: config.concurrency, active: 0 },
     skills: [
       {
-        id: 'coding_task',
-        name: 'Autonomous Code Implementation',
+        id: 'execute_coding_subtask',
+        name: 'Execute Tactical Coding Subtask',
         description:
-          'Executes software engineering tasks: writes code, runs test suites, manages isolated Git worktrees, and pushes branches.',
+          'Executes concrete code edits, runs verification test suites, commits to dedicated Git branch/worktree, and produces diff artifacts for the Master Agent.',
         input_schema: {
           type: 'object',
           properties: {
-            prompt: { type: 'string', description: 'Detailed instruction of the feature, fix, or task.' },
+            prompt: { type: 'string', description: 'Concrete instructions on what to change and what tests to run.' },
             repo: {
               type: 'object',
               properties: {
                 url: { type: 'string', description: 'Git repository URL' },
-                base_branch: { type: 'string', description: 'Base branch to branch off from' },
-                target_branch: { type: 'string', description: 'Target branch name to create and push' },
+                base_branch: { type: 'string', description: 'Base branch name' },
+                target_branch: { type: 'string', description: 'Dedicated branch for this subtask' },
               },
             },
           },

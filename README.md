@@ -1,128 +1,111 @@
-# Pi Durable Coding Agent (hagent)
+# Pi Durable Execution Worker (hagent)
 
-Sistem autonomous coding agent berbasis **Pi Durable** dengan interface **A2A (Agent-to-Agent) Protocol**, dirancang khusus untuk berjalan di atas armada **MicroVM** yang saling terhubung melalui **Tailscale mesh network**.
+Sistem autonomous **Tactical Execution Worker** berbasis **Pi Durable** dengan interface **A2A (Agent-to-Agent) Protocol**, dirancang khusus untuk berjalan di atas armada **MicroVM (Tailscale mesh)**.
 
----
-
-## 🌟 Fitur Utama
-
-- **Pi Durable Loop**: Setiap langkah berpikir (*turns*), pesan, dan eksekusi tool dicatat secara persisten ke SQLite WAL mode. Mampu melanjutkan eksekusi (*auto-recovery*) pasca reboot/crash tanpa mengulang *side-effect*.
-- **The Effect Sandwich (Idempotency)**:
-  1. *Intent*: Catat rencana eksekusi tool (`PENDING`).
-  2. *Execution*: Jalankan side effect (`bash_run`, `edit_file`, dsb).
-  3. *Commit*: Simpan output ke SQLite.
-  Jika VM mati mendadak saat eksekusi tool, state direkonsiliasi dan tidak terjadi duplikasi eksekusi.
-- **A2A Protocol Compliance**:
-  - `GET /.well-known/agent.json`: Agent Card (deskripsi skill, capability, tools, endpoint).
-  - `POST /tasks`: Menerima task coding baru.
-  - `GET /tasks/:id`: Cek status, pesan, dan artifacts.
-  - `GET /tasks/:id/events`: Server-Sent Events (SSE) streaming live logs, thoughts, dan tool results.
-  - `POST /tasks/:id/heartbeat`: Distributed lease renewal.
-  - `POST /tasks/:id/cancel`: Pembatalan task aman.
-- **Git Worktree Isolation**: Setiap task dijalankan di folder terisolasi (`./worktrees/<task-id>`) pada git branch khusus (`agent/<task-id>`), mencegah konflik file antar task paralel.
-- **Zero-Dependency Bun Runtime**: Dibangun 100% menggunakan native primitives Bun (`bun:sqlite`, `Bun.serve`, `Bun.spawn`, native `fetch`), start time < 10ms.
+Agen ini berfokus murni sebagai **Worker Pelaksana (Execution Engine)**:
+* **Master Agent** (seperti Claude Code, Google Antigravity, Pi Agent, atau custom script) bertugas melakukan *high-level thinking*, dekomposisi masalah, dan arsitektur.
+* **Worker Agent ini** bertugas menerima sub-task konkret, memodifikasi kode di Git Worktree terisolasi, menjalankan unit test untuk verifikasi, melakukan git commit, dan mengembalikan structured artifact (diff, commit sha, test status) ke Master.
 
 ---
 
-## 🏗️ Arsitektur
+## 🌟 Multi-Agent & Multi-Worktree di 1 VM
+
+Dalam **satu MicroVM**, sistem mendukung **beberapa agen/task berjalan paralel**:
+1. **Parallel Task Slots (Concurrency Queue)**:
+   - Satu proses worker bisa menjalankan multiple task bersamaan (default: 4 slot, dapat diatur via `--concurrency`).
+   - Setiap task mendapatkan **direktori Git Worktree sendiri** di `./worktrees/<task-id>` pada branch terpisah (`agent/<task-id>`), sehingga tidak ada file conflict.
+2. **Multiple Worker Processes per VM**:
+   - Jika ingin memisahkan proses (misal untuk alokasi CPU/port berbeda):
+     ```bash
+     # Worker 1 di port 3001
+     bun run server.ts --port 3001 --agent-id worker-alpha --concurrency 2
+
+     # Worker 2 di port 3002
+     bun run server.ts --port 3002 --agent-id worker-beta --concurrency 2
+     ```
+
+---
+
+## 🏗️ Topologi Orkestrator & Worker
 
 ```
-┌────────────────────────────────────────────────────────┐
-│ Master VPS / Developer Machine                         │
-│                                                        │
-│  bun run master.ts submit                              │
-│       │                                                │
-│       │ Tailscale Mesh (Encrypted WireGuard)           │
-│       ▼                                                │
-├────────────────────────────────────────────────────────┤
-│ Worker MicroVM (IP: 100.x.y.z)                         │
-│                                                        │
-│  [A2A HTTP & SSE Server (Bun.serve)]                   │
-│         │                                              │
-│         ▼                                              │
-│  [Pi Durable Loop + SQLite WAL Store]                  │
-│         │                                              │
-│         ├── Effect Sandwich Idempotency Layer          │
-│         │                                              │
-│         ▼                                              │
-│  [Git Worktree Sandbox: /worktrees/<task-id>]          │
-│         │                                              │
-│         └── Tools: bash_run, file_edit, git_commit...  │
-└────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ MASTER AGENT (Claude Code / Antigravity / Pi / Custom Script)          │
+│                                                                        │
+│  1. Analisis issue besar & dekomposisi jadi sub-task terpisah          │
+│  2. Temukan worker via Tailscale: GET /.well-known/agent.json          │
+│  3. Kirim Subtask A -> Worker VM 1 (Branch: agent/auth-fix)            │
+│  4. Kirim Subtask B -> Worker VM 1 (Branch: agent/billing-feat)        │
+│  5. Tonton live stream SSE & terima artifact diff/commit               │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Tailscale Mesh Network
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ WORKER MicroVM (Pi Durable Execution Engine)                           │
+│                                                                        │
+│  [A2A HTTP & SSE Server - Port 3000]                                   │
+│  [Slots: Max 4 Concurrent Worktrees]                                   │
+│                                                                        │
+│   ├── Task A Loop ────────► Worktree: /worktrees/task-a (Branch A)     │
+│   │   (Pi Durable SQLite)   (bash_run -> test -> git_commit)           │
+│   │                                                                    │
+│   └── Task B Loop ────────► Worktree: /worktrees/task-b (Branch B)     │
+│       (Pi Durable SQLite)   (bash_run -> test -> git_commit)           │
+└────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 📋 A2A API Endpoints (Untuk Dipanggil Master Agent)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| `GET` | `/.well-known/agent.json` | Mengembalikan **Agent Card** (tools, skills, slot kapasitas `max` & `active`) |
+| `POST` | `/tasks` | Submit sub-task baru (`{ prompt, repo: { url, base_branch, target_branch } }`) |
+| `GET` | `/tasks` | List semua task di worker |
+| `GET` | `/tasks/:id` | Status task, artifacts (commit sha, target branch), & execution summary |
+| `GET` | `/tasks/:id/events` | **SSE Stream**: Live stream thoughts, tool calls, tool results |
+| `POST` | `/tasks/:id/heartbeat` | Perpanjangan lease time |
+| `POST` | `/tasks/:id/cancel` | Batalkan eksekusi task |
 
 ---
 
 ## 🚀 Panduan Menjalankan
 
-### 1. Di Worker VPS (MicroVM)
-
-1. Pastikan MicroVM terhubung ke Tailscale:
-   ```bash
-   sudo tailscale up
-   ```
-2. Clone repo dan buat file konfigurasi `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-   Isi API key model LLM (Gemini / OpenAI / OpenRouter):
-   ```env
-   PORT=3000
-   HOST=0.0.0.0
-   GEMINI_API_KEY=AIzaSy...
-   LLM_MODEL=gemini-2.5-flash
-   ```
-3. Jalankan server worker:
-   ```bash
-   bun run server.ts
-   ```
-   Worker akan mengekspos endpoint A2A di port 3000 pada IP Tailscale MicroVM tersebut.
-
----
-
-### 2. Di Master VPS (Orkestrator)
-
-Gunakan CLI `master.ts` untuk mengontrol worker di Tailscale:
-
-#### Cek Agent Card (Discovery)
+### 1. Di Worker VM
 ```bash
+# Salin konfigurasi environment
+cp .env.example .env
+
+# Jalankan worker dengan 4 concurrent worktree slots
+bun run server.ts --port 3000 --concurrency 4
+```
+
+### 2. Dari Master Agent / CLI
+```bash
+# Cek Agent Card & ketersediaan slot di Worker
 bun run master.ts card --worker http://worker-vm-1:3000
-```
 
-#### Kirim Task Coding & Tonton Live Stream Log
-```bash
+# Kirim sub-task A
 bun run master.ts submit \
   --worker http://worker-vm-1:3000 \
-  --prompt "Perbaiki fungsi hitung diskon di src/discount.ts dan jalankan bun test"
-```
+  --repo https://github.com/my-org/backend.git \
+  --target-branch agent/auth-fix \
+  --prompt "Perbaiki validasi token JWT di src/auth.ts dan jalankan bun test test/auth.test.ts"
 
-#### Kirim Task untuk Repo Git Tertentu
-```bash
+# Kirim sub-task B secara paralel (akan langsung jalan di worktree berbeda!)
 bun run master.ts submit \
   --worker http://worker-vm-1:3000 \
-  --repo https://github.com/org/my-project.git \
-  --base-branch main \
-  --prompt "Refactor user authentication endpoint to validate JWT expiry"
-```
-
-#### List & Status Task
-```bash
-# List semua task di worker
-bun run master.ts list --worker http://worker-vm-1:3000
-
-# Detail task
-bun run master.ts status <task_id> --worker http://worker-vm-1:3000
-
-# Cancel task
-bun run master.ts cancel <task_id> --worker http://worker-vm-1:3000
+  --repo https://github.com/my-org/backend.git \
+  --target-branch agent/billing-feat \
+  --prompt "Tambahkan endpoint webhook Stripe di src/billing.ts dan verifikasi dengan bun test"
 ```
 
 ---
 
-## 🧪 Menjalankan Unit & Integration Test
-
-Semua modul (SQLite persistence, Effect Sandwich, Git Worktree, A2A Server) diuji secara otomatis:
+## 🧪 Testing
 
 ```bash
 bun test
 ```
+*Semua 6 unit & concurrency integration tests lulus dalam ~200ms.*

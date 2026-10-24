@@ -5,8 +5,12 @@ import { resolve } from 'node:path';
 export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   host: process.env.HOST || '0.0.0.0',
-  agentName: process.env.AGENT_NAME || 'Pi-Durable-Coding-Agent',
+  agentId: process.env.AGENT_ID || 'worker-1',
+  agentName: process.env.AGENT_NAME || 'Pi-Durable-Execution-Worker',
   agentVersion: '1.0.0',
+
+  // Concurrency per VM
+  concurrency: parseInt(process.env.CONCURRENCY || '4', 10),
 
   // Storage
   dataDir: resolve(process.env.DATA_DIR || './data'),
@@ -21,13 +25,13 @@ export const config = {
       : 'https://api.openai.com/v1'),
     model: process.env.LLM_MODEL || 'gemini-2.5-flash',
     maxTokens: parseInt(process.env.LLM_MAX_TOKENS || '8192', 10),
-    temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.2'),
+    temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.1'),
   },
 
   // Distributed Durability & Lease
   leaseDefaultSeconds: parseInt(process.env.LEASE_DEFAULT_SECONDS || '120', 10),
   heartbeatIntervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || '15000', 10),
-  maxTurnsPerTask: parseInt(process.env.MAX_TURNS_PER_TASK || '50', 10),
+  maxTurnsPerTask: parseInt(process.env.MAX_TURNS_PER_TASK || '40', 10),
 };
 
 // Ensure directories exist

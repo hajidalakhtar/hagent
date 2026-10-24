@@ -322,6 +322,29 @@ export class DurableStore {
     }));
   }
 
+  getPendingTasks(limit = 10): A2ATask[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM tasks WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT ?
+    `);
+    const rows = stmt.all(limit) as any[];
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status as A2ATaskStatus,
+      prompt: row.prompt,
+      repo_url: row.repo_url || undefined,
+      base_branch: row.base_branch,
+      target_branch: row.target_branch,
+      worktree_dir: row.worktree_dir || undefined,
+      lease_expires_at: row.lease_expires_at,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      error: row.error || undefined,
+      summary: row.summary || undefined,
+      artifacts: JSON.parse(row.artifacts || '[]'),
+    }));
+  }
+
   close() {
     this.db.close();
   }

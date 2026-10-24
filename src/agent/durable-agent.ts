@@ -14,13 +14,15 @@ export class DurableAgent extends EventEmitter {
   private tools: ToolRegistry;
   private llm: LLMClient;
   private runningTasks = new Set<string>();
+  private maxConcurrency: number;
 
-  constructor(store: DurableStore, worktreeMgr: WorktreeManager) {
+  constructor(store: DurableStore, worktreeMgr: WorktreeManager, concurrency = config.concurrency) {
     super();
     this.store = store;
     this.worktreeMgr = worktreeMgr;
     this.tools = new ToolRegistry(store);
     this.llm = new LLMClient();
+    this.maxConcurrency = concurrency;
   }
 
   emitA2AEvent(event: A2AEvent) {
@@ -30,6 +32,14 @@ export class DurableAgent extends EventEmitter {
 
   isTaskRunning(taskId: string): boolean {
     return this.runningTasks.has(taskId);
+  }
+
+  getActiveTaskCount(): number {
+    return this.runningTasks.size;
+  }
+
+  getMaxConcurrency(): number {
+    return this.maxConcurrency;
   }
 
   cancelTask(taskId: string): boolean {
@@ -43,7 +53,46 @@ export class DurableAgent extends EventEmitter {
       timestamp: Date.now(),
       data: { status: 'CANCELLED' },
     });
+    this.processQueue();
     return true;
+  }
+
+  /**
+   * Schedules a task: if slots are free, executes immediately; otherwise leaves in PENDING queue
+   */
+  schedule(taskId: string): void {
+    if (this.runningTasks.size < this.maxConcurrency) {
+      this.runTask(taskId).catch((err) => {
+        console.error(`[Task Execution Error] Task ${taskId}:`, err.message);
+      });
+    } else {
+      console.log(`[Queue] Task ${taskId} queued. Active tasks: ${this.runningTasks.size}/${this.maxConcurrency}`);
+      this.emitA2AEvent({
+        event: 'status_changed',
+        task_id: taskId,
+        timestamp: Date.now(),
+        data: { status: 'PENDING', message: 'Queued waiting for available worker slot' },
+      });
+    }
+  }
+
+  /**
+   * Triggers pending tasks if concurrency slots are available
+   */
+  processQueue(): void {
+    if (this.runningTasks.size >= this.maxConcurrency) return;
+
+    const availableSlots = this.maxConcurrency - this.runningTasks.size;
+    const pendingTasks = this.store.getPendingTasks(availableSlots);
+
+    for (const task of pendingTasks) {
+      if (!this.runningTasks.has(task.id)) {
+        console.log(`[Queue] Dispatched queued task ${task.id} to worker slot`);
+        this.runTask(task.id).catch((err) => {
+          console.error(`[Task Execution Error] Task ${task.id}:`, err.message);
+        });
+      }
+    }
   }
 
   /**
@@ -73,7 +122,7 @@ export class DurableAgent extends EventEmitter {
     });
 
     try {
-      // 1. Prepare Worktree
+      // 1. Prepare Dedicated Worktree for this task
       let worktreeDir = task.worktree_dir;
       if (!worktreeDir) {
         const prep = await this.worktreeMgr.prepare(
@@ -83,7 +132,6 @@ export class DurableAgent extends EventEmitter {
           task.target_branch
         );
         worktreeDir = prep.worktreeDir;
-        // Update task with worktree path
         this.store.updateTaskStatus(taskId, 'RUNNING');
       }
 
@@ -192,9 +240,9 @@ export class DurableAgent extends EventEmitter {
           });
         }
 
-        // If no tool calls, model provided a final answer or stopped
+        // If no tool calls, model concluded
         if (!response.toolCalls || response.toolCalls.length === 0) {
-          finalSummary = response.content || 'Agent completed task with text response';
+          finalSummary = response.content || 'Execution completed.';
           isDone = true;
           break;
         }
@@ -285,6 +333,8 @@ export class DurableAgent extends EventEmitter {
       throw err;
     } finally {
       this.runningTasks.delete(taskId);
+      // Automatically drain queue
+      this.processQueue();
     }
   }
 
@@ -295,12 +345,9 @@ export class DurableAgent extends EventEmitter {
     const incomplete = this.store.getIncompleteTasks();
     if (incomplete.length === 0) return;
 
-    console.log(`[Durable Recovery] Found ${incomplete.length} incomplete tasks. Resuming...`);
+    console.log(`[Durable Recovery] Found ${incomplete.length} incomplete tasks. Processing...`);
     for (const t of incomplete) {
-      console.log(`[Durable Recovery] Resuming task: ${t.id} - "${t.prompt.slice(0, 40)}..."`);
-      this.runTask(t.id).catch((err) => {
-        console.error(`[Durable Recovery] Failed resuming task ${t.id}:`, err);
-      });
+      this.schedule(t.id);
     }
   }
 }
