@@ -1,4 +1,4 @@
-// skills/a2a-worker-fleet/scripts/fleet.ts
+// skills/hagent/scripts/fleet.ts
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

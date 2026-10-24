@@ -21,7 +21,7 @@ orchestrator-pack/
 ├── bin/
 │   └── fleet.ts                     # Standalone CLI toolkit untuk terminal/script
 ├── skills/
-│   ├── a2a-worker-fleet/
+│   ├── hagent/
 │   │   └── SKILL.md                 # Standar SOP & panduan native A2A tool calling
 │   └── 9router/
 │       └── SKILL.md                 # Integrasi 9Router AI gateway (Web search, fetch, image, TTS)

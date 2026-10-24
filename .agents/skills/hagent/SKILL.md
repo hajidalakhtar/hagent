@@ -1,11 +1,11 @@
 ---
-name: a2a-worker-fleet
+name: hagent
 description: >-
   Orchestrate, delegate, and monitor tactical coding subtasks across a fleet of
   Pi Durable worker MicroVMs via native A2A (Agent-to-Agent) communication tools.
 ---
 
-# A2A Worker Fleet Orchestrator Skill
+# HAgent Worker Fleet Orchestrator Skill
 
 This skill enables Master Orchestrators (such as **Pi Agent**, **Claude Code**, **Google Cloud Code**, or **Google Antigravity**) to communicate natively with a distributed fleet of remote **Pi Durable Execution Workers** running inside MicroVMs on a Tailscale network.
 

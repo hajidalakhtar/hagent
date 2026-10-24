@@ -70,7 +70,7 @@ hagent/
 ├── master.ts                  # CLI kontroler dasar dari Master VM
 ├── orchestrator-pack/         # 📦 PAKET KHUSUS UNTUK AGENT ORCHESTRATOR LAIN
 │   ├── bin/fleet.ts           # Standalone CLI manager armada worker
-│   ├── skills/                # Folder skill (a2a-worker-fleet, 9router)
+│   ├── skills/                # Folder skill (hagent, 9router)
 │   ├── instructions/          # Drop-in rules (CLAUDE.md, GEMINI.md)
 │   └── README.md              # Panduan pemasangan ke Claude Code / Cloud Code
 ├── src/
