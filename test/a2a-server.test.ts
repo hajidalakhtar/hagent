@@ -30,6 +30,8 @@ describe('A2A Server Protocol Endpoints', () => {
     expect(card.capabilities.tools).toBeArray();
     expect(card.capabilities.tools).toContain('gh_issue_view');
     expect(card.capabilities.tools).toContain('gh_pr_create');
+    expect(card.capabilities.tools).toContain('web_search');
+    expect(card.capabilities.tools).toContain('web_fetch');
     expect(card.skills[0].id).toBe('execute_github_task');
     expect(card.slots).toBeDefined();
     expect(card.slots.max).toBe(3);

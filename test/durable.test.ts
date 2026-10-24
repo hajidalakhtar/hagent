@@ -126,4 +126,14 @@ describe('Pi Durable Store & Effect Sandwich', () => {
     const commitRes = await registry.executeWithEffectSandwich(commitCall, 2, context);
     expect(commitRes.output).toContain('Committed successfully');
   });
+
+  it('should have web_search and web_fetch registered as default tools', () => {
+    const searchTool = registry.getTool('web_search');
+    const fetchTool = registry.getTool('web_fetch');
+
+    expect(searchTool).toBeDefined();
+    expect(fetchTool).toBeDefined();
+    expect(searchTool?.name).toBe('web_search');
+    expect(fetchTool?.name).toBe('web_fetch');
+  });
 });

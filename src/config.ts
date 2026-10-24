@@ -24,6 +24,16 @@ export const config = {
   dbPath: resolve(process.env.DATA_DIR || './data', 'agent_durable.db'),
   worktreesDir: resolve(process.env.WORKTREES_DIR || './worktrees'),
 
+  // 9Router & Web Tools Configuration
+  web: {
+    routerUrl: (process.env.NINEROUTER_URL || process.env.WEB_ROUTER_URL || 'http://localhost:20128').replace(/\/+$/, ''),
+    apiKey: process.env.NINEROUTER_KEY || process.env.WEB_ROUTER_KEY || '',
+    searchModel: process.env.WEB_SEARCH_MODEL || 'tavily/search',
+    fetchModel: process.env.WEB_FETCH_MODEL || 'jina/reader',
+    searchEndpoint: process.env.WEB_SEARCH_URL || '',
+    fetchEndpoint: process.env.WEB_FETCH_URL || '',
+  },
+
   // LLM Configuration
   llm: {
     apiKey: process.env.LLM_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '',

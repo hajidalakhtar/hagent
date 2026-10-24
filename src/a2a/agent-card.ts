@@ -16,6 +16,8 @@ export function getAgentCard(hostUrl: string, slots?: { max: number; active: num
     capabilities: {
       streaming: true,
       tools: [
+        'web_search',
+        'web_fetch',
         'gh_issue_view',
         'gh_issue_comment',
         'gh_pr_create',

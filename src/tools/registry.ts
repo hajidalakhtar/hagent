@@ -11,6 +11,7 @@ import {
   ghPrReviewTool,
   ghPrViewTool,
 } from './github.ts';
+import { webFetchTool, webSearchTool } from './web.ts';
 
 export class ToolRegistry {
   private tools = new Map<string, ToolDefinition>();
@@ -26,6 +27,10 @@ export class ToolRegistry {
     this.register(gitStatusTool);
     this.register(gitCommitTool);
     this.register(finishTaskTool);
+
+    // Web & Grounding tools
+    this.register(webSearchTool);
+    this.register(webFetchTool);
 
     // GitHub CLI tools
     this.register(ghIssueViewTool);
