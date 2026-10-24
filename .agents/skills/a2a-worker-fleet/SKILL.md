@@ -2,126 +2,91 @@
 name: a2a-worker-fleet
 description: >-
   Orchestrate, delegate, and monitor tactical coding subtasks across a fleet of
-  Pi Durable worker MicroVMs via Tailscale using the A2A (Agent-to-Agent) protocol.
+  Pi Durable worker MicroVMs via native A2A (Agent-to-Agent) communication tools.
 ---
 
 # A2A Worker Fleet Orchestrator Skill
 
-This skill guides Master Agents (Claude Code, Google Antigravity, Pi Agent, or custom scripts) to act as the **high-level orchestrator / architect**, delegating discrete, parallel coding subtasks to remote **Pi Durable Execution Workers** running inside MicroVMs on a Tailscale network.
+This skill enables Master Orchestrators (such as **Pi Agent**, **Claude Code**, **Google Cloud Code**, or **Google Antigravity**) to communicate natively with a distributed fleet of remote **Pi Durable Execution Workers** running inside MicroVMs on a Tailscale network.
 
 --------------------------------------------------------------------------------
 
-## 🧠 Role Division: Master vs Worker
+## 🤝 Native A2A Tools (No Raw HTTP Calls Required!)
 
-| Role | Entity | Responsibilities |
-|---|---|---|
-| **Master Orchestrator** | Claude Code / Antigravity / Master VM | High-level reasoning, system architecture, task decomposition, git PR review, human interaction. |
-| **Execution Worker** | Pi Durable Worker (MicroVM) | Tactical execution in isolated Git worktree: edits code, runs tests, commits, and returns diff/artifacts. |
+When operating as an orchestrator, **do NOT write raw HTTP curl calls**. Use the native A2A agent tools registered via the Pi Extension or MCP Server:
 
---------------------------------------------------------------------------------
-
-## 🚀 Quick Commands Reference
-
-All fleet management commands can be executed via the bundled script:
-
-```bash
-# 1. Check health and available slots across all worker VMs
-bun run skills/a2a-worker-fleet/scripts/fleet.ts status
-
-# 2. Dispatch subtask (automatically selects least-loaded worker)
-bun run skills/a2a-worker-fleet/scripts/fleet.ts dispatch \
-  --prompt "Implement JWT verification in src/auth.ts and run bun test" \
-  --repo https://github.com/my-org/backend.git \
-  --base-branch main \
-  --target-branch agent/auth-verification \
-  --watch
-
-# 3. View all active and completed tasks across all workers
-bun run skills/a2a-worker-fleet/scripts/fleet.ts tasks
-
-# 4. Stream live logs for a running task
-bun run skills/a2a-worker-fleet/scripts/fleet.ts watch <task_id> --worker <worker_url>
-
-# 5. Cancel a running task
-bun run skills/a2a-worker-fleet/scripts/fleet.ts cancel <task_id> --worker <worker_url>
-```
+| Native Tool | Description |
+|---|---|
+| `a2a_discover_fleet` | Discovers all worker MicroVMs, checks health, and returns active vs max concurrency slots. |
+| `a2a_send_task` | Dispatches a coding task, GitHub issue fix, or test verification to a worker MicroVM. |
+| `a2a_get_task_status` | Polls current task progress, logs, and artifacts (commit SHA, Pull Request URL). |
+| `a2a_send_message` | **Bidirectional A2A**: Sends mid-flight instructions, feedback, or clarifications to an active worker task. |
+| `a2a_chat` | Sends a direct conversational message / sanity ping to a worker node. |
 
 --------------------------------------------------------------------------------
 
-## 📋 Standard Operating Procedure (SOP) for Master Agent
+## 🔌 How to Load Native A2A Tools into Your Orchestrator
 
-When assigned a complex coding task or large feature:
-
-### Step 1: Decompose into Orthogonal Subtasks
-Do not send an open-ended "build the whole app" prompt to a worker. Break the problem into orthogonal, non-overlapping subtasks:
-* **Subtask 1**: Backend API changes (Branch: `agent/api-changes`)
-* **Subtask 2**: Database schema migration (Branch: `agent/db-migrations`)
-* **Subtask 3**: Frontend UI components (Branch: `agent/frontend-components`)
-
-> [!IMPORTANT]
-> Ensure parallel subtasks touch different files or directories to minimize git merge conflicts.
-
-### Step 2: Check Fleet Capacity
-Run:
+### 1. In Pi Agent (`@earendil-works/pi-coding-agent`)
+Load the native Pi Extension:
 ```bash
-bun run skills/a2a-worker-fleet/scripts/fleet.ts status
+# In your Pi Agent workspace:
+mkdir -p .pi/extensions
+cp orchestrator-pack/extensions/pi-extension.ts .pi/extensions/a2a.ts
 ```
-Inspect which worker MicroVMs are online (`🟢 Online`) and how many slots are active versus free (`active / max`).
-
-### Step 3: Dispatch Subtasks to Workers
-For each decomposed subtask, call `fleet.ts dispatch`. 
-
-**Prompt Guidelines for Worker Tasks:**
-1. State the objective clearly.
-2. Specify the exact files to create or modify.
-3. Specify the test command to verify the fix (e.g. `bun test`, `npm test`, `pytest`).
-4. Remind the worker to commit before calling `finish_task`.
-
-Example command:
+Or start Pi with the extension:
 ```bash
-bun run skills/a2a-worker-fleet/scripts/fleet.ts dispatch \
-  --prompt "1. Modify src/services/mailer.ts to support SendGrid provider. 2. Add unit test in test/mailer.test.ts. 3. Run 'bun test' and ensure 100% pass." \
-  --repo https://github.com/my-org/backend.git \
-  --target-branch agent/mailer-sendgrid \
-  --watch
+pi --extension ./orchestrator-pack/extensions/pi-extension.ts
 ```
+*Pi Agent will automatically register `a2a_discover_fleet`, `a2a_send_task`, `a2a_get_task_status`, etc. as first-class model tools!*
 
-### Step 4: Monitor Progress & Collect Artifacts
-If dispatched without `--watch`, monitor progress with:
-```bash
-bun run skills/a2a-worker-fleet/scripts/fleet.ts tasks
-```
-When the task reaches `COMPLETED`, extract the artifacts:
-* `target_branch`: The branch pushed to the remote repository.
-* `git_commit`: The commit SHA created by the worker.
-* `summary`: The execution report provided by the worker.
+---
 
-### Step 5: Review & Merge
-From the Master VM:
-1. Fetch the remote branch: `git fetch origin <target_branch>`.
-2. Inspect the diff: `git diff main origin/<target_branch>`.
-3. If clean, merge into main or open a Pull Request on GitHub.
-4. If tests or code fail, dispatch a targeted follow-up subtask to the worker or resolve manually.
-
---------------------------------------------------------------------------------
-
-## ⚙️ Configuration
-
-Set known worker URLs in environment variable or `fleet.config.json`:
-
-### Option A: Environment Variable
-```bash
-export FLEET_WORKERS="http://100.64.0.10:3000,http://100.64.0.11:3000"
-```
-
-### Option B: `fleet.config.json`
-Create `fleet.config.json` in project root:
+### 2. In Claude Code / Google Antigravity / Cursor (via MCP)
+Add the A2A MCP Server to your `mcp.json` or `claude_desktop_config.json`:
 ```json
 {
-  "workers": [
-    "http://worker-node-1:3000",
-    "http://worker-node-2:3000"
-  ]
+  "mcpServers": {
+    "hagent-fleet": {
+      "command": "bun",
+      "args": ["run", "/path/to/orchestrator-pack/mcp/a2a-server.ts"],
+      "env": {
+        "FLEET_WORKERS": "http://worker-vm-1:3000,http://worker-vm-2:3000"
+      }
+    }
+  }
 }
 ```
-*(MagicDNS names or Tailscale 100.x.y.z IPs work seamlessly).*
+
+---
+
+## 📋 Standard Orchestrator Workflow (SOP)
+
+When a user asks you to implement a feature or resolve an issue:
+
+### Step 1: Discover Fleet
+Call `a2a_discover_fleet()`.
+Inspect which worker MicroVMs are online and which have available slots (`active < max`).
+
+### Step 2: Dispatch Subtask via A2A
+Call `a2a_send_task(...)`:
+```json
+{
+  "prompt": "Fix calculation error in discount coupon and run bun test",
+  "issue_number": 42,
+  "repo_url": "https://github.com/my-org/backend.git",
+  "base_branch": "main"
+}
+```
+The remote worker immediately starts in an isolated Git worktree.
+
+### Step 3: Monitor or Interact Mid-Flight
+* Poll status using `a2a_get_task_status(task_id: "task_123")`.
+* If you need to give extra context while the worker is working, call `a2a_send_message(task_id: "task_123", message: "Make sure to also check edge case when items count is 0")`.
+
+### Step 4: Review Artifacts
+Once status is `COMPLETED`, extract:
+* `artifacts.github_pr`: The Pull Request opened by the worker.
+* `artifacts.git_commit`: The commit SHA.
+* `summary`: The execution report.
+Review the PR and notify the user.

@@ -115,6 +115,39 @@ describe('A2A Server Protocol Endpoints', () => {
     expect(data.model).toBeDefined();
   });
 
+  it('should support bidirectional A2A communication via /tasks/:id/messages', async () => {
+    // 1. Create a task
+    const createRes = await server.fetch(
+      new Request('http://localhost/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Initial task instruction' }),
+      })
+    );
+    const created = (await createRes.json()) as any;
+
+    // 2. Send A2A message to active task
+    const msgRes = await server.fetch(
+      new Request(`http://localhost/tasks/${created.task_id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Extra guidance: check edge cases' }),
+      })
+    );
+    expect(msgRes.status).toBe(200);
+    const msgData = (await msgRes.json()) as any;
+    expect(msgData.acknowledged).toBe(true);
+
+    // 3. Inspect messages
+    const getMsgsRes = await server.fetch(new Request(`http://localhost/tasks/${created.task_id}/messages`));
+    expect(getMsgsRes.status).toBe(200);
+    const msgs = (await getMsgsRes.json()) as any[];
+    expect(msgs.some((m) => m.content.includes('Extra guidance'))).toBe(true);
+
+    // Cleanup
+    await server.fetch(new Request(`http://localhost/tasks/${created.task_id}/cancel`, { method: 'POST' }));
+  });
+
   it('should close server gracefully', () => {
     server.stop();
   });

@@ -254,7 +254,56 @@ export class A2AServer {
           return self.jsonResponse({ task_id: taskId, cancelled: success });
         }
 
-        // 7. Get Task Detail: /tasks/:id
+        // 7. Task Messages: GET /tasks/:id/messages & POST /tasks/:id/messages
+        const messagesMatch = path.match(/^\/tasks\/([^/]+)\/messages$/);
+        if (messagesMatch) {
+          const taskId = messagesMatch[1]!;
+          const task = store.getTask(taskId);
+          if (!task) return self.jsonResponse({ error: 'Task not found' }, 404);
+
+          if (method === 'GET') {
+            return self.jsonResponse(store.getMessages(taskId));
+          }
+
+          if (method === 'POST') {
+            try {
+              const body = (await req.json()) as { message?: string; content?: string };
+              const text = (body.message || body.content || '').trim();
+              if (!text) return self.jsonResponse({ error: 'Field "message" or "content" is required' }, 400);
+
+              const existingMsgs = store.getMessages(taskId);
+              const nextTurn = existingMsgs.length > 0 ? Math.max(...existingMsgs.map((m) => m.turn_index)) + 1 : 1;
+
+              const userMsg = {
+                id: `msg_${crypto.randomUUID()}`,
+                task_id: taskId,
+                turn_index: nextTurn,
+                role: 'user' as const,
+                content: text,
+                created_at: Date.now(),
+              };
+
+              store.addMessage(userMsg);
+              agent.emitA2AEvent({
+                event: 'thought',
+                task_id: taskId,
+                timestamp: Date.now(),
+                data: { message: `[Master A2A Message]: ${text}` },
+              });
+
+              return self.jsonResponse({
+                task_id: taskId,
+                status: task.status,
+                message_id: userMsg.id,
+                acknowledged: true,
+              });
+            } catch (err: any) {
+              return self.jsonResponse({ error: err.message }, 400);
+            }
+          }
+        }
+
+        // 8. Get Task Detail: /tasks/:id
         const taskDetailMatch = path.match(/^\/tasks\/([^/]+)$/);
         if (method === 'GET' && taskDetailMatch) {
           const taskId = taskDetailMatch[1]!;
