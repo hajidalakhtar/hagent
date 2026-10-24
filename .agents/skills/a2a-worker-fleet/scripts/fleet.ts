@@ -77,6 +77,31 @@ async function main() {
   const workers = loadWorkers();
 
   switch (command) {
+    case 'ping':
+    case 'chat': {
+      const msg = args.slice(1).filter((a) => !a.startsWith('--')).join(' ') || 'halo';
+      const targetWorker = getArgValue('--worker', workers[0] || 'http://127.0.0.1:3000');
+      console.log(`💬 Pinging worker ${targetWorker} with: "${msg}"...\n`);
+      try {
+        const res = await fetch(`${targetWorker.replace(/\/+$/, '')}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg }),
+        });
+        if (!res.ok) {
+          console.error(`❌ Ping failed (${res.status}): ${await res.text()}`);
+          process.exit(1);
+        }
+        const data = (await res.json()) as any;
+        console.log(`🤖 [${data.agent} | ${data.model}]:`);
+        console.log(data.reply);
+        console.log('');
+      } catch (err: any) {
+        console.error(`❌ Failed to connect: ${err.message}`);
+      }
+      break;
+    }
+
     case 'status':
     case 'list': {
       console.log(`\n🔍 Checking status of ${workers.length} worker node(s) on Tailscale fleet...\n`);

@@ -45,6 +45,9 @@ export function getCodingAgentSystemPrompt(params: {
 5. **Reviewing PRs**: If the task asks to review a PR, use \`gh_pr_view\` to examine the diff and details, then submit feedback using \`gh_pr_review\`.
 6. **Finish**: Call \`finish_task\` to complete the assignment.
 
+### CONVERSATIONAL & DRY-RUN TESTING
+If the user prompt is a simple greeting, conversation, question, or sanity test (e.g. "halo", "ping", "who are you?", "hitung 10+20"), answer directly and politely in text without invoking any Git or GitHub tools.
+
 ${activeCustomPrompt ? `\n### USER INJECTED INSTRUCTIONS\n${activeCustomPrompt}\n` : ''}
 `;
 }

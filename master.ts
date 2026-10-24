@@ -17,6 +17,18 @@ const client = new A2AMasterClient(workerUrl);
 
 async function main() {
   switch (command) {
+    case 'chat':
+    case 'ask':
+    case 'ping': {
+      const message = args.slice(1).filter((a) => !a.startsWith('--')).join(' ') || getArgValue('--prompt') || 'halo';
+      console.log(`💬 Sending message to worker (${workerUrl}): "${message}"...\n`);
+      const res = await client.chat(message);
+      console.log(`🤖 [${res.agent} | ${res.model}]:`);
+      console.log(res.reply);
+      console.log('');
+      break;
+    }
+
     case 'card': {
       console.log(`🔍 Inspecting Agent Card on ${workerUrl}...`);
       const card = await client.getAgentCard();

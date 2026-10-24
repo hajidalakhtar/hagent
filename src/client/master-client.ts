@@ -14,6 +14,21 @@ export class A2AMasterClient {
     return res.json() as Promise<A2AAgentCard>;
   }
 
+  async chat(message: string): Promise<{ reply: string; model: string; agent: string; timestamp: number }> {
+    const res = await fetch(`${this.workerUrl}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Chat failed (${res.status}): ${err}`);
+    }
+
+    return res.json() as any;
+  }
+
   async submitTask(params: {
     prompt: string;
     systemPrompt?: string;

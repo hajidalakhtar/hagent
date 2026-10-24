@@ -1,6 +1,7 @@
 // src/a2a/server.ts
 import { config } from '../config.ts';
 import { DurableAgent } from '../agent/durable-agent.ts';
+import { LLMClient } from '../llm/client.ts';
 import { DurableStore } from '../store/durable-store.ts';
 import type { A2AEvent, A2ATask, A2ATaskCreateRequest } from '../types.ts';
 import { getAgentCard } from './agent-card.ts';
@@ -8,10 +9,12 @@ import { getAgentCard } from './agent-card.ts';
 export class A2AServer {
   private store: DurableStore;
   private agent: DurableAgent;
+  private llm: LLMClient;
 
   constructor(store: DurableStore, agent: DurableAgent) {
     this.store = store;
     this.agent = agent;
+    this.llm = new LLMClient();
   }
 
   private jsonResponse(data: unknown, status = 200): Response {
@@ -119,7 +122,51 @@ export class A2AServer {
           );
         }
 
-        // 2. Create Task
+        // 2. Direct Chat & Sanity Ping (No Git / Worktree required)
+        if (method === 'POST' && path === '/chat') {
+          try {
+            const body = (await req.json()) as { message?: string; prompt?: string };
+            const text = (body.message || body.prompt || '').trim();
+            if (!text) {
+              return self.jsonResponse({ error: 'Field "message" or "prompt" is required' }, 400);
+            }
+
+            const sys = config.systemPrompt
+              ? `${config.systemPrompt}\nYou are ${config.agentName} running on Pi Durable. Provide direct, friendly, and helpful responses.`
+              : `You are ${config.agentName} running on Pi Durable. Provide direct, friendly, and helpful responses.`;
+
+            const messages = [
+              {
+                id: `sys_${crypto.randomUUID()}`,
+                task_id: 'chat_ping',
+                turn_index: 0,
+                role: 'system' as const,
+                content: sys,
+                created_at: Date.now(),
+              },
+              {
+                id: `usr_${crypto.randomUUID()}`,
+                task_id: 'chat_ping',
+                turn_index: 1,
+                role: 'user' as const,
+                content: text,
+                created_at: Date.now(),
+              },
+            ];
+
+            const reply = await self.llm.chat(messages, []);
+            return self.jsonResponse({
+              reply: reply.content,
+              model: config.llm.model,
+              agent: config.agentName,
+              timestamp: Date.now(),
+            });
+          } catch (err: any) {
+            return self.jsonResponse({ error: err.message }, 500);
+          }
+        }
+
+        // 3. Create Task
         if (method === 'POST' && path === '/tasks') {
           try {
             const body = (await req.json()) as A2ATaskCreateRequest;

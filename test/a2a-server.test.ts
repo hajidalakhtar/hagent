@@ -84,6 +84,35 @@ describe('A2A Server Protocol Endpoints', () => {
     await server.fetch(new Request(`http://localhost/tasks/${data2.task_id}/cancel`, { method: 'POST' }));
   });
 
+  it('should validate and handle /chat endpoint for quick conversational testing', async () => {
+    // 1. Missing message validation
+    const badRes = await server.fetch(
+      new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+    );
+    expect(badRes.status).toBe(400);
+
+    // 2. Mock LLM for test
+    (a2a as any).llm = {
+      chat: async () => ({ content: 'Halo! Saya worker siap membantu.' }),
+    };
+
+    const goodRes = await server.fetch(
+      new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'halo' }),
+      })
+    );
+    expect(goodRes.status).toBe(200);
+    const data = (await goodRes.json()) as any;
+    expect(data.reply).toBe('Halo! Saya worker siap membantu.');
+    expect(data.model).toBeDefined();
+  });
+
   it('should close server gracefully', () => {
     server.stop();
   });
