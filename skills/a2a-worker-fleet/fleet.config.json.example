@@ -1,0 +1,6 @@
+{
+  "workers": [
+    "http://worker-vm-1:3000",
+    "http://worker-vm-2:3000"
+  ]
+}
