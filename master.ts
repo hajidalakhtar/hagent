@@ -60,19 +60,30 @@ async function main() {
     }
 
     case 'submit': {
-      const prompt = getArgValue('--prompt') || args[1];
+      let prompt = getArgValue('--prompt') || args[1];
+      const issueNum = getArgValue('--issue');
+      const prNum = getArgValue('--pr');
+      const systemPrompt = getArgValue('--system-prompt');
+
+      if (issueNum) {
+        prompt = `Resolve GitHub issue #${issueNum}. Inspect issue requirements using gh_issue_view, make exact code modifications, run test suite to verify, commit changes, and open a Pull Request using gh_pr_create (linking 'Closes #${issueNum}').${prompt ? `\nAdditional instructions: ${prompt}` : ''}`;
+      } else if (prNum) {
+        prompt = `Review GitHub Pull Request #${prNum}. Inspect PR details and diff using gh_pr_view, check code quality and test coverage, and submit review using gh_pr_review.${prompt ? `\nReview criteria: ${prompt}` : ''}`;
+      }
+
       if (!prompt) {
-        console.error('Usage: bun run master.ts submit --prompt "your instructions" [--repo https://github.com/...]');
+        console.error('Usage: bun run master.ts submit [--issue <num>] [--pr <num>] [--prompt "instructions"] [--repo <url>]');
         process.exit(1);
       }
 
       const repoUrl = getArgValue('--repo');
       const baseBranch = getArgValue('--base-branch', 'main');
-      const targetBranch = getArgValue('--target-branch');
+      const targetBranch = getArgValue('--target-branch', issueNum ? `issue-${issueNum}` : undefined);
 
       console.log(`\n📤 Submitting task to worker (${workerUrl})...`);
       const submission = await client.submitTask({
         prompt,
+        systemPrompt,
         repo: repoUrl ? { url: repoUrl, base_branch: baseBranch, target_branch: targetBranch } : undefined,
       });
 

@@ -151,6 +151,7 @@ export class DurableAgent extends EventEmitter {
           baseBranch: task.base_branch,
           targetBranch: task.target_branch,
           repoUrl: task.repo_url,
+          customSystemPrompt: task.system_prompt,
         });
 
         const sysMsg: AgentMessage = {

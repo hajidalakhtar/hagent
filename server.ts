@@ -1,4 +1,6 @@
 // server.ts
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { DurableAgent } from './src/agent/durable-agent.ts';
 import { A2AServer } from './src/a2a/server.ts';
 import { config } from './src/config.ts';
@@ -15,13 +17,28 @@ function getArg(flag: string, fallback: string): string {
 const customPort = parseInt(getArg('--port', String(config.port)), 10);
 const customAgentId = getArg('--agent-id', config.agentId);
 const customConcurrency = parseInt(getArg('--concurrency', String(config.concurrency)), 10);
+const customSystemPrompt = getArg('--system-prompt', config.systemPrompt);
+const customSystemPromptFile = getArg('--system-prompt-file', config.systemPromptFile);
 
 config.port = customPort;
 config.agentId = customAgentId;
 config.concurrency = customConcurrency;
 
+if (customSystemPromptFile && existsSync(resolve(customSystemPromptFile))) {
+  config.systemPrompt = readFileSync(resolve(customSystemPromptFile), 'utf8');
+  console.log(`📜 Loaded custom system prompt from: ${customSystemPromptFile}`);
+} else if (customSystemPrompt) {
+  config.systemPrompt = customSystemPrompt;
+  console.log(`📜 Custom system prompt injected via CLI/Env`);
+}
+
 console.log(`🤖 Starting Pi Durable Execution Worker [${config.agentId}]...`);
 console.log(`⚡ Max Concurrency: ${config.concurrency} parallel worktrees`);
+if (config.githubToken) {
+  console.log(`🐙 GitHub CLI Authentication: Enabled`);
+} else {
+  console.log(`⚠️ GitHub CLI Authentication: GITHUB_TOKEN not set in environment`);
+}
 
 const store = new DurableStore();
 const worktreeMgr = new WorktreeManager();

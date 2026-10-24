@@ -4,6 +4,13 @@ import type { A2ATaskArtifact, ToolCallRecord, ToolContext, ToolDefinition } fro
 import { bashTool } from './bash.ts';
 import { editFileTool, listFilesTool, readFileTool, writeFileTool } from './fs.ts';
 import { finishTaskTool, gitCommitTool, gitStatusTool } from './git.ts';
+import {
+  ghIssueCommentTool,
+  ghIssueViewTool,
+  ghPrCreateTool,
+  ghPrReviewTool,
+  ghPrViewTool,
+} from './github.ts';
 
 export class ToolRegistry {
   private tools = new Map<string, ToolDefinition>();
@@ -19,6 +26,13 @@ export class ToolRegistry {
     this.register(gitStatusTool);
     this.register(gitCommitTool);
     this.register(finishTaskTool);
+
+    // GitHub CLI tools
+    this.register(ghIssueViewTool);
+    this.register(ghIssueCommentTool);
+    this.register(ghPrCreateTool);
+    this.register(ghPrViewTool);
+    this.register(ghPrReviewTool);
   }
 
   register(tool: ToolDefinition) {

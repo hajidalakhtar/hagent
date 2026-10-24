@@ -135,6 +135,7 @@ export class A2AServer {
               id: taskId,
               status: 'PENDING',
               prompt: body.prompt,
+              system_prompt: body.system_prompt,
               repo_url: body.repo?.url,
               base_branch: body.repo?.base_branch || 'main',
               target_branch: body.repo?.target_branch || `agent/${taskId}`,

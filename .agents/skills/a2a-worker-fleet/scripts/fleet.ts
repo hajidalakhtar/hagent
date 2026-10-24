@@ -108,15 +108,25 @@ async function main() {
     }
 
     case 'dispatch': {
-      const prompt = getArgValue('--prompt');
+      let prompt = getArgValue('--prompt');
+      const issueNum = getArgValue('--issue');
+      const prNum = getArgValue('--pr');
+      const systemPrompt = getArgValue('--system-prompt');
+
+      if (issueNum) {
+        prompt = `Resolve GitHub issue #${issueNum}. Inspect issue requirements using gh_issue_view, make exact code modifications, run test suite to verify, commit changes, and open a Pull Request using gh_pr_create (linking 'Closes #${issueNum}').${prompt ? `\nAdditional instructions: ${prompt}` : ''}`;
+      } else if (prNum) {
+        prompt = `Review GitHub Pull Request #${prNum}. Inspect PR details and diff using gh_pr_view, check code quality and test coverage, and submit review using gh_pr_review.${prompt ? `\nReview criteria: ${prompt}` : ''}`;
+      }
+
       if (!prompt) {
-        console.error('Error: --prompt is required.');
+        console.error('Error: --prompt, --issue, or --pr is required.');
         process.exit(1);
       }
 
       const repoUrl = getArgValue('--repo');
       const baseBranch = getArgValue('--base-branch', 'main');
-      const targetBranch = getArgValue('--target-branch');
+      const targetBranch = getArgValue('--target-branch', issueNum ? `issue-${issueNum}` : undefined);
       let targetWorker = getArgValue('--worker');
 
       // Auto load-balancing if worker not specified
@@ -145,6 +155,7 @@ async function main() {
       console.log(`🚀 Dispatching subtask to ${targetWorker}...`);
       const payload: any = {
         prompt,
+        system_prompt: systemPrompt,
         repo: repoUrl
           ? {
               url: repoUrl,

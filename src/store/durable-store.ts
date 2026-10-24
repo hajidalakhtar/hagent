@@ -27,6 +27,7 @@ export class DurableStore {
         id TEXT PRIMARY KEY,
         status TEXT NOT NULL,
         prompt TEXT NOT NULL,
+        system_prompt TEXT,
         repo_url TEXT,
         base_branch TEXT NOT NULL,
         target_branch TEXT NOT NULL,
@@ -40,6 +41,11 @@ export class DurableStore {
         artifacts TEXT NOT NULL DEFAULT '[]'
       );
     `);
+
+    // Migration fallback for existing DBs
+    try {
+      this.db.run('ALTER TABLE tasks ADD COLUMN system_prompt TEXT;');
+    } catch {}
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -79,16 +85,17 @@ export class DurableStore {
   createTask(task: A2ATask): void {
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
-        id, status, prompt, repo_url, base_branch, target_branch,
+        id, status, prompt, system_prompt, repo_url, base_branch, target_branch,
         worktree_dir, lease_expires_at, created_at, updated_at,
         completed_at, error, summary, artifacts
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
       task.id,
       task.status,
       task.prompt,
+      task.system_prompt || null,
       task.repo_url || null,
       task.base_branch,
       task.target_branch,
@@ -112,6 +119,7 @@ export class DurableStore {
       id: row.id,
       status: row.status as A2ATaskStatus,
       prompt: row.prompt,
+      system_prompt: row.system_prompt || undefined,
       repo_url: row.repo_url || undefined,
       base_branch: row.base_branch,
       target_branch: row.target_branch,
@@ -133,6 +141,7 @@ export class DurableStore {
       id: row.id,
       status: row.status as A2ATaskStatus,
       prompt: row.prompt,
+      system_prompt: row.system_prompt || undefined,
       repo_url: row.repo_url || undefined,
       base_branch: row.base_branch,
       target_branch: row.target_branch,
@@ -308,6 +317,7 @@ export class DurableStore {
       id: row.id,
       status: row.status as A2ATaskStatus,
       prompt: row.prompt,
+      system_prompt: row.system_prompt || undefined,
       repo_url: row.repo_url || undefined,
       base_branch: row.base_branch,
       target_branch: row.target_branch,
@@ -331,6 +341,7 @@ export class DurableStore {
       id: row.id,
       status: row.status as A2ATaskStatus,
       prompt: row.prompt,
+      system_prompt: row.system_prompt || undefined,
       repo_url: row.repo_url || undefined,
       base_branch: row.base_branch,
       target_branch: row.target_branch,

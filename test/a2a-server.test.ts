@@ -28,14 +28,16 @@ describe('A2A Server Protocol Endpoints', () => {
     const card = (await res.json()) as any;
     expect(card.name).toBeDefined();
     expect(card.capabilities.tools).toBeArray();
-    expect(card.skills[0].id).toBe('execute_coding_subtask');
+    expect(card.capabilities.tools).toContain('gh_issue_view');
+    expect(card.capabilities.tools).toContain('gh_pr_create');
+    expect(card.skills[0].id).toBe('execute_github_task');
     expect(card.slots).toBeDefined();
     expect(card.slots.max).toBe(3);
     expect(card.slots.active).toBe(0);
   });
 
   it('should support multiple concurrent tasks with dedicated worktrees', async () => {
-    // Submit task 1
+    // Submit task 1 with custom injected system prompt
     const res1 = await server.fetch(
       new Request('http://localhost/tasks', {
         method: 'POST',
@@ -43,6 +45,7 @@ describe('A2A Server Protocol Endpoints', () => {
         body: JSON.stringify({
           task_id: 'task_concurrent_1',
           prompt: 'Task 1: Update auth module',
+          system_prompt: 'Strict TDD: Write test first before code.',
           repo: { base_branch: 'main', target_branch: 'agent/auth' },
         }),
       })
@@ -72,6 +75,7 @@ describe('A2A Server Protocol Endpoints', () => {
     const detail2 = await (await server.fetch(new Request(`http://localhost/tasks/${data2.task_id}`))).json() as any;
 
     expect(detail1.target_branch).toBe('agent/auth');
+    expect(detail1.system_prompt).toBe('Strict TDD: Write test first before code.');
     expect(detail2.target_branch).toBe('agent/billing');
     expect(detail1.id).not.toBe(detail2.id);
 

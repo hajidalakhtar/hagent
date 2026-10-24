@@ -16,6 +16,7 @@ export class A2AMasterClient {
 
   async submitTask(params: {
     prompt: string;
+    systemPrompt?: string;
     taskId?: string;
     repo?: { url: string; base_branch?: string; target_branch?: string };
     leaseSeconds?: number;
@@ -26,6 +27,7 @@ export class A2AMasterClient {
       body: JSON.stringify({
         task_id: params.taskId,
         prompt: params.prompt,
+        system_prompt: params.systemPrompt,
         repo: params.repo,
         lease_seconds: params.leaseSeconds,
       }),

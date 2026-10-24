@@ -35,6 +35,7 @@ export interface A2AAgentCard {
 export interface A2ATaskCreateRequest {
   task_id?: string;
   prompt: string;
+  system_prompt?: string;
   repo?: {
     url: string;
     base_branch?: string;
@@ -46,7 +47,7 @@ export interface A2ATaskCreateRequest {
 }
 
 export interface A2ATaskArtifact {
-  type: 'git_branch' | 'git_commit' | 'file' | 'test_report' | 'summary';
+  type: 'git_branch' | 'git_commit' | 'github_pr' | 'file' | 'test_report' | 'summary';
   name: string;
   value: string;
   metadata?: Record<string, unknown>;
@@ -56,6 +57,7 @@ export interface A2ATask {
   id: string;
   status: A2ATaskStatus;
   prompt: string;
+  system_prompt?: string;
   repo_url?: string;
   base_branch: string;
   target_branch: string;

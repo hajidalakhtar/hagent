@@ -12,6 +12,13 @@ export const config = {
   // Concurrency per VM
   concurrency: parseInt(process.env.CONCURRENCY || '4', 10),
 
+  // GitHub CLI & Authentication
+  githubToken: process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '',
+
+  // System Prompt Customization
+  systemPrompt: process.env.SYSTEM_PROMPT || '',
+  systemPromptFile: process.env.SYSTEM_PROMPT_FILE || '',
+
   // Storage
   dataDir: resolve(process.env.DATA_DIR || './data'),
   dbPath: resolve(process.env.DATA_DIR || './data', 'agent_durable.db'),

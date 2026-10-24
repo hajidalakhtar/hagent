@@ -6,7 +6,7 @@ export function getAgentCard(hostUrl: string, slots?: { max: number; active: num
   return {
     name: `${config.agentName} [${config.agentId}]`,
     description:
-      'Autonomous tactical execution coding worker running on Pi Durable with Git Worktree isolation. Designed to receive decomposed sub-tasks from Master Agents (Claude Code, Google Antigravity, Pi Agent).',
+      'Autonomous tactical execution coding worker running on Pi Durable with Git Worktree isolation and GitHub CLI integration. Handles GitHub Issues, code edits, verification tests, PR creation, and PR reviews.',
     version: config.agentVersion,
     endpoints: {
       agent_card: `${hostUrl}/.well-known/agent.json`,
@@ -16,6 +16,11 @@ export function getAgentCard(hostUrl: string, slots?: { max: number; active: num
     capabilities: {
       streaming: true,
       tools: [
+        'gh_issue_view',
+        'gh_issue_comment',
+        'gh_pr_create',
+        'gh_pr_view',
+        'gh_pr_review',
         'bash_run',
         'read_file',
         'write_file',
@@ -30,14 +35,15 @@ export function getAgentCard(hostUrl: string, slots?: { max: number; active: num
     slots: slots || { max: config.concurrency, active: 0 },
     skills: [
       {
-        id: 'execute_coding_subtask',
-        name: 'Execute Tactical Coding Subtask',
+        id: 'execute_github_task',
+        name: 'GitHub Issue & Pull Request Automation',
         description:
-          'Executes concrete code edits, runs verification test suites, commits to dedicated Git branch/worktree, and produces diff artifacts for the Master Agent.',
+          'Fetches GitHub issues, implements features/bugfixes in dedicated Git worktrees, runs tests, creates Pull Requests via GitHub CLI, and performs PR reviews.',
         input_schema: {
           type: 'object',
           properties: {
-            prompt: { type: 'string', description: 'Concrete instructions on what to change and what tests to run.' },
+            prompt: { type: 'string', description: 'Instructions on the issue to solve or PR to review.' },
+            system_prompt: { type: 'string', description: 'Optional custom system prompt to guide this specific execution.' },
             repo: {
               type: 'object',
               properties: {
