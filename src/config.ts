@@ -19,6 +19,9 @@ export const config = {
   systemPrompt: process.env.SYSTEM_PROMPT || '',
   systemPromptFile: process.env.SYSTEM_PROMPT_FILE || '',
 
+  // Inbound channels config (GitHub bot, ...) — one JSON file
+  channelsConfigPath: resolve(process.env.CHANNELS_CONFIG || './channels.json'),
+
   // Storage
   dataDir: resolve(process.env.DATA_DIR || './data'),
   dbPath: resolve(process.env.DATA_DIR || './data', 'agent_durable.db'),

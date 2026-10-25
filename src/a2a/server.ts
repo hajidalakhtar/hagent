@@ -3,6 +3,7 @@ import { config } from '../config.ts';
 import { DurableAgent } from '../agent/durable-agent.ts';
 import { LLMClient } from '../llm/client.ts';
 import { DurableStore } from '../store/durable-store.ts';
+import type { Channel } from '../channels/types.ts';
 import type { A2AEvent, A2ATask, A2ATaskCreateRequest } from '../types.ts';
 import { getAgentCard } from './agent-card.ts';
 
@@ -10,11 +11,13 @@ export class A2AServer {
   private store: DurableStore;
   private agent: DurableAgent;
   private llm: LLMClient;
+  private channels: Channel[];
 
-  constructor(store: DurableStore, agent: DurableAgent) {
+  constructor(store: DurableStore, agent: DurableAgent, channels: Channel[] = []) {
     this.store = store;
     this.agent = agent;
     this.llm = new LLMClient();
+    this.channels = channels;
   }
 
   private jsonResponse(data: unknown, status = 200): Response {
@@ -112,6 +115,31 @@ export class A2AServer {
 
         const hostUrl = `${url.protocol}//${url.host}`;
 
+        // 0. Inbound channels (GitHub bot, ...)
+        for (const channel of self.channels) {
+          for (const route of channel.routes) {
+            const methods = Array.isArray(route.method) ? route.method : [route.method];
+            if (methods.includes(method) && route.match(path)) {
+              try {
+                return await route.handle(req, url);
+              } catch (err: any) {
+                return self.jsonResponse({ error: err.message, channel: channel.name }, 500);
+              }
+            }
+          }
+        }
+
+        // 0b. Channel introspection
+        if (method === 'GET' && path === '/channels') {
+          return self.jsonResponse(
+            self.channels.map((c) => ({
+              name: c.name,
+              description: c.description,
+              ...(c.info ? c.info() : {}),
+            }))
+          );
+        }
+
         // 1. Agent Card Discovery
         if (method === 'GET' && (path === '/.well-known/agent.json' || path === '/agent.json')) {
           return self.jsonResponse(
@@ -183,6 +211,7 @@ export class A2AServer {
               status: 'PENDING',
               prompt: body.prompt,
               system_prompt: body.system_prompt,
+              system_prompt_mode: body.system_prompt_mode,
               repo_url: body.repo?.url,
               base_branch: body.repo?.base_branch || 'main',
               target_branch: body.repo?.target_branch || `agent/${taskId}`,
@@ -324,6 +353,14 @@ export class A2AServer {
 
     console.log(`🚀 A2A Worker Server running on http://${config.host}:${config.port}`);
     console.log(`📋 Agent Card available at http://${config.host}:${config.port}/.well-known/agent.json`);
+
+    // Boot inbound channels (bind listeners, reconcile replies missed while down)
+    for (const channel of self.channels) {
+      Promise.resolve()
+        .then(() => channel.start?.())
+        .then(() => console.log(`📡 Channel "${channel.name}" online — ${channel.description}`))
+        .catch((err) => console.error(`⚠️ Channel "${channel.name}" failed to start: ${err.message}`));
+    }
 
     // Trigger recovery of any unfinished tasks
     agent.recoverIncompleteTasks();

@@ -32,10 +32,14 @@ export interface A2AAgentCard {
   }>;
 }
 
+export type SystemPromptMode = 'append' | 'replace';
+
 export interface A2ATaskCreateRequest {
   task_id?: string;
   prompt: string;
   system_prompt?: string;
+  /** 'append' (default) injects the prompt into the worker prompt; 'replace' makes it the system prompt. */
+  system_prompt_mode?: SystemPromptMode;
   repo?: {
     url: string;
     base_branch?: string;
@@ -47,7 +51,7 @@ export interface A2ATaskCreateRequest {
 }
 
 export interface A2ATaskArtifact {
-  type: 'git_branch' | 'git_commit' | 'github_pr' | 'file' | 'test_report' | 'summary';
+  type: 'git_branch' | 'git_commit' | 'github_pr' | 'file' | 'test_report' | 'summary' | 'channel_reply';
   name: string;
   value: string;
   metadata?: Record<string, unknown>;
@@ -58,10 +62,19 @@ export interface A2ATask {
   status: A2ATaskStatus;
   prompt: string;
   system_prompt?: string;
+  system_prompt_mode?: SystemPromptMode;
   repo_url?: string;
   base_branch: string;
   target_branch: string;
   worktree_dir?: string;
+  /** Inbound channel that created this task (e.g. "github"). */
+  channel?: string;
+  /** Idempotency key inside the channel (webhook delivery id). */
+  channel_ref?: string;
+  /** Skip `git push` on completion (read-only channels). */
+  no_push?: boolean;
+  /** Reply delivery state for channel tasks: posted / failed / skipped. */
+  reply_state?: string;
   lease_expires_at: number; // Unix timestamp in ms
   created_at: number;
   updated_at: number;

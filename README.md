@@ -62,6 +62,17 @@ Sistem ini memisahkan secara tegas antara **Master Orchestrator (Thinking & Plan
 
 ---
 
+### 8. Inbound Channels (GitHub Bot & Per-Label Prompts)
+HAgent mendukung **Inbound Channels** yang dikonfigurasi lewat satu file JSON (`channels.json`):
+- **Channel 1: GitHub Bot (`POST /channels/github`)**
+  - Menerima webhook GitHub saat di-tag (`@hagent`) pada komentar Issue / Pull Request, atau saat label trigger ditambahkan (misal label `review`).
+  - Otomatis melakukan **Git clone repo ke worktree terisolasi**, membaca kode asli, menjalankan tes/analisis sesuai instruksi.
+  - Memilih **system prompt secara dinamis berdasarkan label** pada Issue / PR (misal label `review` memakai `prompts/review.md`, label `bug` memakai triage prompt).
+  - Jawaban akhir agen diposting kembali secara otomatis sebagai komentar di thread Issue/PR yang sama (lengkap dengan loop guard & deduplikasi delivery).
+  - Lihat template di `channels.example.json` dan prompt di folder `prompts/`.
+
+---
+
 ## 📁 Struktur Repositori
 
 ```

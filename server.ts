@@ -1,6 +1,7 @@
 // server.ts
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createChannels } from './src/channels/index.ts';
 import { DurableAgent } from './src/agent/durable-agent.ts';
 import { A2AServer } from './src/a2a/server.ts';
 import { config } from './src/config.ts';
@@ -19,10 +20,12 @@ const customAgentId = getArg('--agent-id', config.agentId);
 const customConcurrency = parseInt(getArg('--concurrency', String(config.concurrency)), 10);
 const customSystemPrompt = getArg('--system-prompt', config.systemPrompt);
 const customSystemPromptFile = getArg('--system-prompt-file', config.systemPromptFile);
+const customChannelsConfig = getArg('--channels-config', config.channelsConfigPath);
 
 config.port = customPort;
 config.agentId = customAgentId;
 config.concurrency = customConcurrency;
+config.channelsConfigPath = customChannelsConfig;
 
 if (customSystemPromptFile && existsSync(resolve(customSystemPromptFile))) {
   config.systemPrompt = readFileSync(resolve(customSystemPromptFile), 'utf8');
@@ -43,6 +46,19 @@ if (config.githubToken) {
 const store = new DurableStore();
 const worktreeMgr = new WorktreeManager();
 const agent = new DurableAgent(store, worktreeMgr, config.concurrency);
-const a2aServer = new A2AServer(store, agent);
+
+// Inbound channels (channels.json): GitHub bot tag -> clone -> analyze -> reply
+let channels: ReturnType<typeof createChannels> = [];
+try {
+  channels = createChannels({ configPath: config.channelsConfigPath, store, agent });
+} catch (err: any) {
+  console.error(`⚠️ Failed to load channels config (${config.channelsConfigPath}): ${err.message}`);
+  process.exit(1);
+}
+for (const channel of channels) {
+  console.log(`📡 Channel loaded: ${channel.name} — ${channel.description}`);
+}
+
+const a2aServer = new A2AServer(store, agent, channels);
 
 a2aServer.start();

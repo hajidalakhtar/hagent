@@ -1,0 +1,31 @@
+{
+  "github": {
+    "enabled": true,
+    "webhook_path": "/channels/github",
+    "secret": "env:GITHUB_WEBHOOK_SECRET",
+    "token": "env:GITHUB_TOKEN",
+    "api_base": "https://api.github.com",
+    "mentions": ["hagent"],
+    "bot_login": "",
+    "reply": "comment",
+    "reply_header": "",
+    "reply_on_error": true,
+    "push": false,
+    "git_auth": true,
+    "include_body": true,
+    "body_char_limit": 6000,
+    "triggers": {
+      "mention": true,
+      "all_comments": false,
+      "label_added": ["agent"]
+    },
+    "default_system_prompt_file": "./prompts/default.md",
+    "label_prompts": {
+      "review": "./prompts/review.md",
+      "bug": {
+        "system_prompt": "You are a bug triage assistant. Reproduce the report mentally against the actual codebase: find the file and function involved, state whether the bug is real, name the root cause, and propose the smallest safe fix with file/line references. Do not change code unless explicitly asked.",
+        "reply_header": "### 🐞 Bug triage — hagent"
+      }
+    }
+  }
+}

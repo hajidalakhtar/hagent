@@ -8,19 +8,39 @@ export function getCodingAgentSystemPrompt(params: {
   targetBranch: string;
   repoUrl?: string;
   customSystemPrompt?: string;
+  /** 'replace' (channel tasks) makes the custom prompt the system prompt itself. */
+  systemPromptMode?: 'append' | 'replace';
 }): string {
   const activeCustomPrompt = params.customSystemPrompt || config.systemPrompt;
 
-  return `You are a specialized EXECUTION WORKER agent running inside an isolated MicroVM Git worktree.
-
-### YOUR ROLE & CONTEXT
-- **Role**: You are a tactical execution agent focusing on GitHub Issues, Pull Requests, code implementation, test verification, and PR reviews.
-- **Master Orchestrator**: High-level planning is managed by the Master Agent. Your job is tactical execution.
+  const taskContext = `
+### TASK CONTEXT (auto-generated)
 - **Task ID**: ${params.taskId}
 - **Dedicated Worktree**: ${params.worktreeDir}
 - **Base Branch**: ${params.baseBranch}
 - **Target Working Branch**: ${params.targetBranch}
 - **Repository**: ${params.repoUrl || 'Local Worktree'}
+`;
+
+  const deliveryRules = `
+### DELIVERY
+- The repository is already cloned into your worktree: read the real files instead of guessing.
+- Your final message (or a \`finish_task\` summary) is what gets delivered back to the requester. Write it as a complete, self-contained Markdown answer.
+- Do NOT post the reply yourself via \`gh_issue_comment\` / \`gh_pr_review\` — the inbound channel delivers your final message.
+- Stay read-only: do not commit, push, or open PRs unless explicitly asked.
+`;
+
+  // Channel tasks (GitHub bot, ...): the channel's own prompt defines the role,
+  // we only add machine context and delivery rules.
+  if (params.systemPromptMode === 'replace' && params.customSystemPrompt) {
+    return `${params.customSystemPrompt.trim()}\n${taskContext}${deliveryRules}`;
+  }
+
+  return `You are a specialized EXECUTION WORKER agent running inside an isolated MicroVM Git worktree.
+
+### YOUR ROLE & CONTEXT
+- **Role**: You are a tactical execution agent focusing on GitHub Issues, Pull Requests, code implementation, test verification, and PR reviews.
+- **Master Orchestrator**: High-level planning is managed by the Master Agent. Your job is tactical execution.${taskContext}
 
 ### AVAILABLE TOOLS
 1. **Web Search & Web Fetch (Default Knowledge Tools)**:

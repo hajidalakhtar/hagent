@@ -43,8 +43,27 @@ export class DurableStore {
     `);
 
     // Migration fallback for existing DBs
+    const migrations = [
+      'system_prompt TEXT',
+      'system_prompt_mode TEXT',
+      'channel TEXT',
+      'channel_ref TEXT',
+      'no_push INTEGER',
+      'reply_state TEXT',
+    ];
+    for (const column of migrations) {
+      try {
+        this.db.run(`ALTER TABLE tasks ADD COLUMN ${column};`);
+      } catch {
+        // column already exists
+      }
+    }
+
+    // Idempotency: one channel event (webhook delivery) can only ever spawn one task
     try {
-      this.db.run('ALTER TABLE tasks ADD COLUMN system_prompt TEXT;');
+      this.db.run(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_channel_ref ON tasks(channel_ref) WHERE channel_ref IS NOT NULL;'
+      );
     } catch {}
 
     this.db.run(`
@@ -82,13 +101,38 @@ export class DurableStore {
 
   // --- Task Methods ---
 
+  private rowToTask(row: any): A2ATask {
+    return {
+      id: row.id,
+      status: row.status as A2ATaskStatus,
+      prompt: row.prompt,
+      system_prompt: row.system_prompt || undefined,
+      system_prompt_mode: row.system_prompt_mode || undefined,
+      repo_url: row.repo_url || undefined,
+      base_branch: row.base_branch,
+      target_branch: row.target_branch,
+      worktree_dir: row.worktree_dir || undefined,
+      channel: row.channel || undefined,
+      channel_ref: row.channel_ref || undefined,
+      no_push: row.no_push ? true : undefined,
+      reply_state: row.reply_state || undefined,
+      lease_expires_at: row.lease_expires_at,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      error: row.error || undefined,
+      summary: row.summary || undefined,
+      artifacts: JSON.parse(row.artifacts || '[]'),
+    };
+  }
+
   createTask(task: A2ATask): void {
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
-        id, status, prompt, system_prompt, repo_url, base_branch, target_branch,
-        worktree_dir, lease_expires_at, created_at, updated_at,
-        completed_at, error, summary, artifacts
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, status, prompt, system_prompt, system_prompt_mode, repo_url, base_branch, target_branch,
+        worktree_dir, channel, channel_ref, no_push, reply_state,
+        lease_expires_at, created_at, updated_at, completed_at, error, summary, artifacts
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -96,10 +140,15 @@ export class DurableStore {
       task.status,
       task.prompt,
       task.system_prompt || null,
+      task.system_prompt_mode || null,
       task.repo_url || null,
       task.base_branch,
       task.target_branch,
       task.worktree_dir || null,
+      task.channel || null,
+      task.channel_ref || null,
+      task.no_push ? 1 : 0,
+      task.reply_state || null,
       task.lease_expires_at,
       task.created_at,
       task.updated_at,
@@ -111,49 +160,33 @@ export class DurableStore {
   }
 
   getTask(id: string): A2ATask | null {
-    const stmt = this.db.prepare('SELECT * FROM tasks WHERE id = ?');
-    const row = stmt.get(id) as any;
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      status: row.status as A2ATaskStatus,
-      prompt: row.prompt,
-      system_prompt: row.system_prompt || undefined,
-      repo_url: row.repo_url || undefined,
-      base_branch: row.base_branch,
-      target_branch: row.target_branch,
-      worktree_dir: row.worktree_dir || undefined,
-      lease_expires_at: row.lease_expires_at,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      error: row.error || undefined,
-      summary: row.summary || undefined,
-      artifacts: JSON.parse(row.artifacts || '[]'),
-    };
+    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
+    return row ? this.rowToTask(row) : null;
   }
 
   listTasks(limit = 50): A2ATask[] {
-    const stmt = this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?');
-    const rows = stmt.all(limit) as any[];
-    return rows.map((row) => ({
-      id: row.id,
-      status: row.status as A2ATaskStatus,
-      prompt: row.prompt,
-      system_prompt: row.system_prompt || undefined,
-      repo_url: row.repo_url || undefined,
-      base_branch: row.base_branch,
-      target_branch: row.target_branch,
-      worktree_dir: row.worktree_dir || undefined,
-      lease_expires_at: row.lease_expires_at,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      error: row.error || undefined,
-      summary: row.summary || undefined,
-      artifacts: JSON.parse(row.artifacts || '[]'),
-    }));
+    const rows = this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?').all(limit) as any[];
+    return rows.map((row) => this.rowToTask(row));
+  }
+
+  /** Tasks created by a channel, oldest first (used for reply reconciliation). */
+  listChannelTasks(channel: string, limit = 500): A2ATask[] {
+    const rows = this.db
+      .prepare('SELECT * FROM tasks WHERE channel = ? ORDER BY created_at ASC LIMIT ?')
+      .all(channel, limit) as any[];
+    return rows.map((row) => this.rowToTask(row));
+  }
+
+  /** Durable dedupe: look up the task spawned by a specific channel event. */
+  findByChannelRef(channel: string, channelRef: string): A2ATask | null {
+    const row = this.db
+      .prepare('SELECT * FROM tasks WHERE channel = ? AND channel_ref = ?')
+      .get(channel, channelRef) as any;
+    return row ? this.rowToTask(row) : null;
+  }
+
+  setReplyState(id: string, state: string): void {
+    this.db.prepare('UPDATE tasks SET reply_state = ?, updated_at = ? WHERE id = ?').run(state, Date.now(), id);
   }
 
   updateTaskStatus(id: string, status: A2ATaskStatus, error?: string, summary?: string): void {
@@ -162,7 +195,7 @@ export class DurableStore {
     const stmt = this.db.prepare(`
       UPDATE tasks 
       SET status = ?, 
-          updated_at = ?, 
+          updated_at = ?,
           completed_at = CASE WHEN ? = 1 THEN ? ELSE completed_at END,
           error = COALESCE(?, error),
           summary = COALESCE(?, summary)
@@ -175,7 +208,7 @@ export class DurableStore {
     const expiresAt = Date.now() + leaseDurationMs;
     const stmt = this.db.prepare(`
       UPDATE tasks 
-      SET lease_expires_at = ?, updated_at = ?
+      SET lease_expires_at = ?, updated_at = ? 
       WHERE id = ?
     `);
     stmt.run(expiresAt, Date.now(), id);
@@ -198,9 +231,8 @@ export class DurableStore {
 
   addMessage(message: AgentMessage): void {
     const stmt = this.db.prepare(`
-      INSERT INTO messages (
-        id, task_id, turn_index, role, content, tool_calls, tool_call_id, name, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, task_id, turn_index, role, content, tool_calls, tool_call_id, name, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -245,9 +277,9 @@ export class DurableStore {
     };
 
     const stmt = this.db.prepare(`
-      INSERT INTO tool_executions (
-        id, task_id, turn_index, tool_name, arguments, status, started_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tool_executions 
+      (id, task_id, turn_index, tool_name, arguments, status, started_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -273,20 +305,11 @@ export class DurableStore {
   commitToolResult(id: string, result: string, isError = false): void {
     const stmt = this.db.prepare(`
       UPDATE tool_executions 
-      SET status = ?, 
-          result = ?, 
-          error = ?, 
-          completed_at = ?
+      SET result = ?, status = ?, error = ?, completed_at = ? 
       WHERE id = ?
     `);
 
-    stmt.run(
-      isError ? 'FAILED' : 'COMPLETED',
-      isError ? null : result,
-      isError ? result : null,
-      Date.now(),
-      id
-    );
+    stmt.run(result, isError ? 'FAILED' : 'COMPLETED', isError ? result : null, Date.now(), id);
   }
 
   getToolExecution(id: string): ToolExecutionRecord | null {
@@ -309,51 +332,17 @@ export class DurableStore {
   }
 
   getIncompleteTasks(): A2ATask[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM tasks WHERE status IN ('PENDING', 'RUNNING') ORDER BY created_at ASC
-    `);
-    const rows = stmt.all() as any[];
-    return rows.map((row) => ({
-      id: row.id,
-      status: row.status as A2ATaskStatus,
-      prompt: row.prompt,
-      system_prompt: row.system_prompt || undefined,
-      repo_url: row.repo_url || undefined,
-      base_branch: row.base_branch,
-      target_branch: row.target_branch,
-      worktree_dir: row.worktree_dir || undefined,
-      lease_expires_at: row.lease_expires_at,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      error: row.error || undefined,
-      summary: row.summary || undefined,
-      artifacts: JSON.parse(row.artifacts || '[]'),
-    }));
+    const rows = this.db
+      .prepare(`SELECT * FROM tasks WHERE status IN ('PENDING', 'RUNNING') ORDER BY created_at ASC`)
+      .all() as any[];
+    return rows.map((row) => this.rowToTask(row));
   }
 
   getPendingTasks(limit = 10): A2ATask[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM tasks WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT ?
-    `);
-    const rows = stmt.all(limit) as any[];
-    return rows.map((row) => ({
-      id: row.id,
-      status: row.status as A2ATaskStatus,
-      prompt: row.prompt,
-      system_prompt: row.system_prompt || undefined,
-      repo_url: row.repo_url || undefined,
-      base_branch: row.base_branch,
-      target_branch: row.target_branch,
-      worktree_dir: row.worktree_dir || undefined,
-      lease_expires_at: row.lease_expires_at,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      error: row.error || undefined,
-      summary: row.summary || undefined,
-      artifacts: JSON.parse(row.artifacts || '[]'),
-    }));
+    const rows = this.db
+      .prepare(`SELECT * FROM tasks WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT ?`)
+      .all(limit) as any[];
+    return rows.map((row) => this.rowToTask(row));
   }
 
   close() {

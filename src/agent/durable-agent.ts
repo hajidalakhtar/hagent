@@ -152,6 +152,7 @@ export class DurableAgent extends EventEmitter {
           targetBranch: task.target_branch,
           repoUrl: task.repo_url,
           customSystemPrompt: task.system_prompt,
+          systemPromptMode: task.system_prompt_mode,
         });
 
         const sysMsg: AgentMessage = {
@@ -306,8 +307,8 @@ export class DurableAgent extends EventEmitter {
       // 5. Finalize task
       this.store.updateTaskStatus(taskId, 'COMPLETED', undefined, finalSummary);
 
-      // Attempt git push if remote repo is configured
-      if (task.repo_url) {
+      // Attempt git push if remote repo is configured (channel tasks are read-only by default)
+      if (task.repo_url && !task.no_push) {
         try {
           await this.worktreeMgr.push(worktreeDir, task.target_branch);
         } catch (pushErr: any) {
