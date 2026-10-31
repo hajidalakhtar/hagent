@@ -220,6 +220,7 @@ export class DurableAgent extends EventEmitter {
         // Call LLM
         const currentHistory = this.store.getMessages(taskId);
         const response = await this.llm.chat(currentHistory, toolDefs);
+        console.log("[AGENT TURN " + currentTurn + "] Content: ", (response.content || "").slice(0, 100), " Tools: ", response.toolCalls ? response.toolCalls.map(t => t.function.name) : "none");
 
         // Record assistant response
         const assistantMsg: AgentMessage = {
@@ -244,7 +245,20 @@ export class DurableAgent extends EventEmitter {
 
         // If no tool calls, model concluded
         if (!response.toolCalls || response.toolCalls.length === 0) {
-          finalSummary = response.content || 'Execution completed.';
+          if (!response.content || response.content.trim() === "") {
+            console.log("[AGENT TURN " + currentTurn + "] Empty content without tool calls, nudging...");
+            this.store.addMessage({
+              id: "msg_" + crypto.randomUUID(),
+              task_id: taskId,
+              turn_index: currentTurn,
+              role: "user",
+              content: "Lanjutkan pekerjaanmu sesuai instruksi sampai selesai.",
+              created_at: Date.now(),
+            });
+            currentTurn++;
+            continue;
+          }
+          finalSummary = response.content || "Execution completed.";
           isDone = true;
           break;
         }

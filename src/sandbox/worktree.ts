@@ -66,13 +66,34 @@ export class WorktreeManager {
         await this.runCommand(['git', 'fetch', 'origin'], bareRepoDir);
       }
 
+      await this.runCommand(['git', 'worktree', 'prune'], bareRepoDir);
+
+      // Release any other worktree holding this branch
+      const listRes = await this.runCommand(['git', 'worktree', 'list', '--porcelain'], bareRepoDir);
+      if (listRes.exitCode === 0) {
+        const lines = listRes.stdout.split("\n");
+        let currentWt = "";
+        for (const line of lines) {
+          if (line.startsWith("worktree ")) currentWt = line.slice(9).trim();
+          if (line.startsWith("branch ") && line.slice(7).trim().endsWith("/" + branch)) {
+            if (currentWt && currentWt !== worktreeDir) {
+              await this.runCommand(['git', 'worktree', 'remove', '--force', currentWt], bareRepoDir);
+              try { rmSync(currentWt, { recursive: true, force: true }); } catch {}
+            }
+          }
+        }
+      }
+
+      // Check if branch exists on origin
+      const branchOnOrigin = await this.runCommand(['git', 'rev-parse', '--verify', "origin/" + branch], bareRepoDir);
+      const startPoint = branchOnOrigin.exitCode === 0 ? "origin/" + branch : "origin/" + baseBranch;
+
       // Create the worktree on the target branch
-      const worktreeRes = await this.runCommand(
-        ['git', 'worktree', 'add', '-B', branch, worktreeDir, `origin/${baseBranch}`],
+      let worktreeRes = await this.runCommand(
+        ['git', 'worktree', 'add', '-B', branch, worktreeDir, startPoint],
         bareRepoDir
       );
-
-      if (worktreeRes.exitCode !== 0) {
+if (worktreeRes.exitCode !== 0) {
         // Try fallback if origin/baseBranch does not exist
         const fallbackRes = await this.runCommand(
           ['git', 'worktree', 'add', '-B', branch, worktreeDir, baseBranch],

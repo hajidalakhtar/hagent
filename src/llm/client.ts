@@ -63,6 +63,7 @@ export class LLMClient {
       messages: formattedMessages,
       temperature: config.llm.temperature,
       max_tokens: config.llm.maxTokens,
+      stream: false,
     };
 
     if (tools.length > 0) {
