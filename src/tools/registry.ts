@@ -20,6 +20,11 @@ export class ToolRegistry {
   constructor(store: DurableStore) {
     this.store = store;
     this.register(bashTool);
+    this.register({
+      ...bashTool,
+      name: 'bash',
+      description: 'Alias for bash_run. Executes a bash shell command inside the task worktree directory.',
+    });
     this.register(readFileTool);
     this.register(writeFileTool);
     this.register(editFileTool);

@@ -1,5 +1,5 @@
 // server.ts
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createChannels } from './src/channels/index.ts';
 import { DurableAgent } from './src/agent/durable-agent.ts';
@@ -21,21 +21,63 @@ const customConcurrency = parseInt(getArg('--concurrency', String(config.concurr
 const customSystemPrompt = getArg('--system-prompt', config.systemPrompt);
 const customSystemPromptFile = getArg('--system-prompt-file', config.systemPromptFile);
 const customChannelsConfig = getArg('--channels-config', config.channelsConfigPath);
+const customDataDir = getArg('--data-dir', process.env.DATA_DIR || '');
+const customWorktreesDir = getArg('--worktrees-dir', process.env.WORKTREES_DIR || '');
 
 config.port = customPort;
 config.agentId = customAgentId;
 config.concurrency = customConcurrency;
 config.channelsConfigPath = customChannelsConfig;
 
+if (customDataDir) {
+  config.dataDir = resolve(customDataDir);
+  config.dbPath = resolve(config.dataDir, 'agent_durable.db');
+} else if (customPort) {
+  config.dataDir = resolve(process.cwd(), `data-${customPort}`);
+  config.dbPath = resolve(config.dataDir, 'agent_durable.db');
+}
+
+if (customWorktreesDir) {
+  config.worktreesDir = resolve(customWorktreesDir);
+} else if (customPort) {
+  config.worktreesDir = resolve(process.cwd(), `worktrees-${customPort}`);
+}
+
+if (!existsSync(config.dataDir)) {
+  mkdirSync(config.dataDir, { recursive: true });
+}
+if (!existsSync(config.worktreesDir)) {
+  mkdirSync(config.worktreesDir, { recursive: true });
+}
+
+// Load System Prompt or SOUL.md
 if (customSystemPromptFile && existsSync(resolve(customSystemPromptFile))) {
   config.systemPrompt = readFileSync(resolve(customSystemPromptFile), 'utf8');
   console.log(`📜 Loaded custom system prompt from: ${customSystemPromptFile}`);
 } else if (customSystemPrompt) {
   config.systemPrompt = customSystemPrompt;
   console.log(`📜 Custom system prompt injected via CLI/Env`);
+} else {
+  const soulCandidates = [
+    resolve(process.cwd(), 'SOUL.md'),
+    resolve('/data/home/hagent/SOUL.md'),
+    resolve('/data/home/SOUL.md'),
+    resolve('/home/ubuntu/.hermes/SOUL.md'),
+  ];
+  for (const sc of soulCandidates) {
+    if (existsSync(sc)) {
+      try {
+        config.systemPrompt = readFileSync(sc, 'utf8').trim();
+        console.log(`📜 Loaded soul persona from: ${sc}`);
+        break;
+      } catch {}
+    }
+  }
 }
 
-console.log(`🤖 Starting Pi Durable Execution Worker [${config.agentId}]...`);
+console.log(`🤖 Starting HAgent Worker [${config.agentId}] on port ${config.port}...`);
+console.log(`📁 Data dir: ${config.dataDir}`);
+console.log(`🌲 Worktrees dir: ${config.worktreesDir}`);
 console.log(`⚡ Max Concurrency: ${config.concurrency} parallel worktrees`);
 if (config.githubToken) {
   console.log(`🐙 GitHub CLI Authentication: Enabled`);
@@ -43,8 +85,8 @@ if (config.githubToken) {
   console.log(`⚠️ GitHub CLI Authentication: GITHUB_TOKEN not set in environment`);
 }
 
-const store = new DurableStore();
-const worktreeMgr = new WorktreeManager();
+const store = new DurableStore(config.dbPath);
+const worktreeMgr = new WorktreeManager(config.worktreesDir);
 const agent = new DurableAgent(store, worktreeMgr, config.concurrency);
 
 // Inbound channels (channels.json): GitHub bot tag -> clone -> analyze -> reply

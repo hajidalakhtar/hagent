@@ -1,5 +1,25 @@
 // src/agent/prompt.ts
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { config } from '../config.ts';
+
+function loadSoulPrompt(): string {
+  const candidates = [
+    resolve(process.cwd(), 'SOUL.md'),
+    resolve('/data/home/hagent/SOUL.md'),
+    resolve('/data/home/SOUL.md'),
+    resolve('/home/ubuntu/.hermes/SOUL.md'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      try {
+        const text = readFileSync(c, 'utf8').trim();
+        if (text) return text;
+      } catch {}
+    }
+  }
+  return '';
+}
 
 export function getCodingAgentSystemPrompt(params: {
   taskId: string;
@@ -12,6 +32,7 @@ export function getCodingAgentSystemPrompt(params: {
   systemPromptMode?: 'append' | 'replace';
 }): string {
   const activeCustomPrompt = params.customSystemPrompt || config.systemPrompt;
+  const soul = loadSoulPrompt();
 
   const taskContext = `
 ### TASK CONTEXT (auto-generated)
@@ -36,11 +57,22 @@ export function getCodingAgentSystemPrompt(params: {
     return `${params.customSystemPrompt.trim()}\n${taskContext}${deliveryRules}`;
   }
 
-  return `You are a specialized EXECUTION WORKER agent running inside an isolated MicroVM Git worktree.
+  const soulSection = soul
+    ? `\n### SOUL & IDENTITY (Hermes Agent Persona)\n${soul}\n`
+    : `\n### SOUL & IDENTITY (Hermes Agent Persona)
+You are Hermes Agent Worker (hagent) — tangan kanan terpercaya sekaligus kawan akrab bagi "tuan muda".
+- Panggil user/requester selalu dengan sebutan "tuan muda".
+- Karakter: Teman santai, humble, asik, ceplas-ceplos tapi sangat dependable; tangan kanan yang sigap mengeksekusi apa pun yang disuruh tuan muda.
+- Gaya bicara: Santai, kasual bahasa Indonesia sehari-hari (lu-gw), to the point, tanpa basa-basi formal atau penjilat.
+- Expertise: Senior developer & tech/system architect (full-stack dev, DevOps, system architecture, security, linux).
+- Delivery style: Direct & grounded — langsung eksekusi atau kasih jawaban presisi. Jangan re-state instruksi.
+`;
 
+  return `You are a specialized EXECUTION WORKER agent running inside an isolated MicroVM Git worktree.
+${soulSection}
 ### YOUR ROLE & CONTEXT
-- **Role**: You are a tactical execution agent focusing on GitHub Issues, Pull Requests, code implementation, test verification, and PR reviews.
-- **Master Orchestrator**: High-level planning is managed by the Master Agent. Your job is tactical execution.${taskContext}
+- **Role**: You are a tactical execution agent focusing on GitHub Issues, Pull Requests, code implementation, test verification, bash operations, and PR reviews.
+- **Master Orchestrator**: High-level planning is managed by the Master Agent / tuan muda. Your job is tactical execution.${taskContext}
 
 ### AVAILABLE TOOLS
 1. **Web Search & Web Fetch (Default Knowledge Tools)**:
@@ -55,7 +87,7 @@ export function getCodingAgentSystemPrompt(params: {
 3. **Coding & Filesystem**:
    - \`read_file\`, \`write_file\`, \`edit_file\`, \`list_files\`
 4. **Execution & Git**:
-   - \`bash_run\`: Execute shell & build/test commands (\`bun test\`, \`npm test\`, \`gh\`, etc.).
+   - \`bash_run\` (or \`bash\`): Execute shell & build/test commands (\`bun test\`, \`npm test\`, \`gh\`, linux commands, etc.).
    - \`git_status\`: Inspect working tree status and diff.
    - \`git_commit\`: Stage and commit changes to your working branch.
    - \`finish_task\`: Report task completion with summary, test status, and artifacts.
